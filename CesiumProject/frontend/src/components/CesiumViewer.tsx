@@ -179,6 +179,75 @@ export default function CesiumViewer() {
       console.error('Failed to add satellite imagery provider', e)
     }
 
+    // --- 新增：隐藏 Cesium 底部 logo / 说明（credits）并保持隐藏 （已改为更保守的实现） ---
+    try {
+      // 持有引用以便 cleanup 时移除
+      let postRenderHandler: any = undefined
+
+      const hideCesiumCredits = () => {
+        try {
+          // 优先通过私有 api 隐藏 credit container（兼容常见 Cesium 版本）
+          const cw = (viewer as any)?._cesiumWidget
+          const creditContainers = [
+            cw && cw._creditContainer,
+            cw && cw._creditContainerElement,
+            cw && cw._creditsContainer
+          ].filter(Boolean)
+
+          creditContainers.forEach((c: any) => {
+            try {
+              if (c && c.style) {
+                c.style.display = 'none'
+                c.style.visibility = 'hidden'
+                c.style.pointerEvents = 'none'
+              }
+            } catch (e) {
+              // ignore
+            }
+          })
+
+          // 仅使用明确的 credit 相关 class 选择器，不再模糊匹配文本，避免误隐藏主视图或画布
+          if (containerRef.current) {
+            const els = containerRef.current.querySelectorAll(
+              '.cesium-credit, .cesium-credit-container, .cesium-creditContainer, .cesium-credit-logo, .cesium-credit-image, .cesium-credit-text, .cesium-credits'
+            )
+            els.forEach(el => {
+              try {
+                const he = el as HTMLElement
+                he.style.display = 'none'
+                he.style.visibility = 'hidden'
+                he.style.pointerEvents = 'none'
+              } catch (e) {
+                // ignore
+              }
+            })
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // 立即隐藏一次
+      hideCesiumCredits()
+
+      // 注册到 postRender，确保渲染更新后仍然被隐藏
+      if (viewer && viewer.scene && viewer.scene.postRender) {
+        postRenderHandler = () => {
+          hideCesiumCredits()
+        }
+        viewer.scene.postRender.addEventListener(postRenderHandler)
+      } else {
+        // 兜底定时再次隐藏
+        setTimeout(hideCesiumCredits, 200)
+      }
+
+      // 在 cleanup 中我们需要移除此处理器；把 postRenderHandler 挂到 viewer 对象上以便访问
+      ;(viewer as any).__hideCreditsPostRenderHandler = postRenderHandler
+    } catch (e) {
+      // ignore
+    }
+    // --- 新增结束 ---
+
     // No diagnostics UI: keep viewer clean (all UI widgets off by default below)
 
     // Example: if you have a local 3D Tiles tileset, add it like this:
@@ -186,6 +255,16 @@ export default function CesiumViewer() {
 
     return () => {
       try {
+        // 移除我们注册的 postRender handler（如果存在），避免内存泄漏
+        try {
+          const handler = (viewer as any).__hideCreditsPostRenderHandler
+          if (handler && viewer && viewer.scene && viewer.scene.postRender && viewer.scene.postRender.removeEventListener) {
+            viewer.scene.postRender.removeEventListener(handler)
+          }
+        } catch (e) {
+          // ignore
+        }
+
         viewer.destroy()
         try {
           ;(window as any).viewer = undefined
