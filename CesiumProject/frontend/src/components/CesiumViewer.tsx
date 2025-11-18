@@ -156,56 +156,50 @@ export default function CesiumViewer() {
         const isBlob = typeof fileOrUrl !== 'string'
         if (isBlob) createdBlobUrls.push(url)
 
-        // try to create Resource when available
-        let resourceForModel: any = url
-        try {
-          if (typeof (Resource as any).fromUrl === 'function') {
-            resourceForModel = (Resource as any).fromUrl(url)
-          }
-        } catch (e) { /* ignore */ }
-
-        // try multiple Model creation shapes
+        // Try the simple, standard approach: Model.fromGltf with scene option.
         let model: any = null
-        const attemptErrors: string[] = []
-        const tryCreate = (fn: () => any, desc: string) => {
-          try {
-            const m = fn()
-            if (m) return m
-            return null
-          } catch (err: any) {
-            attemptErrors.push(`[${desc}] ${err && err.message ? err.message : String(err)}`)
-            // eslint-disable-next-line no-console
-            console.debug('Model creation attempt failed', desc, err)
-            return null
+        let lastErrorMsg = ''
+        try {
+          if (typeof (Model as any).fromGltf === 'function') {
+            try {
+              model = (Model as any).fromGltf({ url, scene: viewer.scene, scale: 1.0, minimumPixelSize: 128 })
+              // Some builds automatically add model to scene when 'scene' provided.
+              // If not, attempt to add it to primitives.
+              try { if (model && viewer && viewer.scene && viewer.scene.primitives) viewer.scene.primitives.add(model) } catch (e) { /* ignore */ }
+            } catch (e: any) {
+              lastErrorMsg = e && e.message ? e.message : String(e)
+              // eslint-disable-next-line no-console
+              console.debug('Model.fromGltf failed:', e)
+            }
+          } else {
+            // Model.fromGltf not available
+            lastErrorMsg = 'Model.fromGltf is not a function'
           }
-        }
-
-        const attempts: Array<() => any> = []
-        attempts.push(() => (typeof (Model as any).fromGltf === 'function') ? (Model as any).fromGltf({ url: resourceForModel }) : null)
-        attempts.push(() => (typeof (Model as any).fromGltf === 'function') ? (Model as any).fromGltf({ url }) : null)
-        attempts.push(() => new (Model as any)({ url: resourceForModel }))
-        attempts.push(() => new (Model as any)({ url }))
-        attempts.push(() => new (Model as any)({ uri: url }))
-
-        for (let i = 0; i < attempts.length; i++) {
-          model = tryCreate(attempts[i], `attempt_${i}`)
-          if (model) break
+        } catch (e) {
+          lastErrorMsg = String(e)
         }
 
         if (!model) {
-          const agg = attemptErrors.join(' | ')
-          if (isBlob) {
-            try { URL.revokeObjectURL(url) } catch (revErr) { /* ignore */ }
-            const idx = createdBlobUrls.indexOf(url)
-            if (idx >= 0) createdBlobUrls.splice(idx, 1)
+          // Fallback: add as an Entity at camera position with model.uri
+          try {
+            const entity = viewer.entities.add({ position: viewer.camera.position, model: { uri: url, minimumPixelSize: 128, scale: 1.0 } })
+            addedModels.push(entity)
+            try { viewer.zoomTo(entity) } catch (e) { /* ignore */ }
+            return entity
+          } catch (e) {
+            // revoke blob on ultimate failure
+            if (isBlob) {
+              try { URL.revokeObjectURL(url) } catch (revErr) { /* ignore */ }
+              const idx = createdBlobUrls.indexOf(url)
+              if (idx >= 0) createdBlobUrls.splice(idx, 1)
+            }
+            const errMsg = 'Failed to create Model. Last error: ' + lastErrorMsg
+            // eslint-disable-next-line no-console
+            console.error(errMsg)
+            throw new Error(errMsg)
           }
-          const err = new Error('Failed to create Model. Details: ' + agg)
-          // eslint-disable-next-line no-console
-          console.error(err)
-          throw err
         }
 
-        viewer.scene.primitives.add(model)
         addedModels.push(model)
 
         try {
