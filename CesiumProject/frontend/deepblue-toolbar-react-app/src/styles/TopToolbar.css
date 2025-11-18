@@ -1,0 +1,27 @@
+# TopToolbar.css
+
+# This file contains the CSS styles for the TopToolbar component, defining the deep blue color scheme and layout for the toolbar.
+
+# Setting the background color and styling for the toolbar
+.top-toolbar {
+    background-color: #001f3f; /* Deep blue background */
+    color: white; /* White text color */
+    display: flex; /* Flexbox layout */
+    align-items: center; /* Center items vertically */
+    padding: 10px 20px; /* Padding around the toolbar */
+}
+
+.top-toolbar button {
+    background-color: #007bff; /* Button color */
+    color: white; /* Button text color */
+    border: none; /* No border */
+    border-radius: 5px; /* Rounded corners */
+    padding: 10px 15px; /* Padding inside the button */
+    cursor: pointer; /* Pointer cursor on hover */
+    margin-left: 10px; /* Space between buttons */
+    transition: background-color 0.3s; /* Smooth background color transition */
+}
+
+.top-toolbar button:hover {
+    background-color: #0056b3; /* Darker blue on hover */
+}
