@@ -179,12 +179,12 @@ export default function CesiumViewer() {
       console.error('Failed to add satellite imagery provider', e)
     }
 
-    // --- 新增：隐藏 Cesium 底部 logo / 说明（credits）并保持隐藏 （已改为更保守的实现） ---
+    // --- 新增：隐藏 Cesium 底部 logo / 说明（credits）并隐藏右上角搜索框（geocoder），保持隐藏 ---
     try {
       // 持有引用以便 cleanup 时移除
       let postRenderHandler: any = undefined
 
-      const hideCesiumCredits = () => {
+      const hideCesiumUI = () => {
         try {
           // 优先通过私有 api 隐藏 credit container（兼容常见 Cesium 版本）
           const cw = (viewer as any)?._cesiumWidget
@@ -206,12 +206,24 @@ export default function CesiumViewer() {
             }
           })
 
-          // 仅使用明确的 credit 相关 class 选择器，不再模糊匹配文本，避免误隐藏主视图或画布
+          // 如果 viewer 提供 geocoder 对象，优先隐藏其容器（更安全）
+          try {
+            const geocoder = (viewer as any).geocoder
+            if (geocoder && geocoder.container && geocoder.container.style) {
+              geocoder.container.style.display = 'none'
+              geocoder.container.style.visibility = 'hidden'
+              geocoder.container.style.pointerEvents = 'none'
+            }
+          } catch (e) {
+            // ignore
+          }
+
+          // 使用明确的 class 选择器隐藏可能的 DOM 节点（仅限 credit 和 geocoder 相关类）
           if (containerRef.current) {
-            const els = containerRef.current.querySelectorAll(
-              '.cesium-credit, .cesium-credit-container, .cesium-creditContainer, .cesium-credit-logo, .cesium-credit-image, .cesium-credit-text, .cesium-credits'
+            const uiEls = containerRef.current.querySelectorAll(
+              '.cesium-credit, .cesium-credit-container, .cesium-creditContainer, .cesium-credit-logo, .cesium-credit-image, .cesium-credit-text, .cesium-credits, .cesium-geocoder, .cesium-geocoder-container, .cesium-search, .cesium-search-container'
             )
-            els.forEach(el => {
+            uiEls.forEach(el => {
               try {
                 const he = el as HTMLElement
                 he.style.display = 'none'
@@ -228,17 +240,17 @@ export default function CesiumViewer() {
       }
 
       // 立即隐藏一次
-      hideCesiumCredits()
+      hideCesiumUI()
 
       // 注册到 postRender，确保渲染更新后仍然被隐藏
       if (viewer && viewer.scene && viewer.scene.postRender) {
         postRenderHandler = () => {
-          hideCesiumCredits()
+          hideCesiumUI()
         }
         viewer.scene.postRender.addEventListener(postRenderHandler)
       } else {
         // 兜底定时再次隐藏
-        setTimeout(hideCesiumCredits, 200)
+        setTimeout(hideCesiumUI, 200)
       }
 
       // 在 cleanup 中我们需要移除此处理器；把 postRenderHandler 挂到 viewer 对象上以便访问
